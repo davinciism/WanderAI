@@ -1,11 +1,28 @@
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { selectBudgetOptions, selectLocalityOptions } from '@/constants/options'
+import { AI_PROMPT, selectBudgetOptions, selectLocalityOptions } from '@/constants/options'
 import React, { useEffect, useState } from 'react'
+import { chatSession } from '@/service/AIModel';
+import { useNavigate } from 'react-router-dom';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { useGoogleLogin } from '@react-oauth/google';
+import axios from 'axios';
+
+
 
 function CreateTrip() {
 
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState([]);
+  const [openDialog, setOpenDialog] = useState(false)
 
   const handleInputChange=(name, value) => {
     setFormData({
@@ -19,7 +36,20 @@ function CreateTrip() {
   }, [formData])
 
 
-  const GenerateTrip = () => {
+  const login = useGoogleLogin({
+    onSuccess:(codeResp)=> getUserProfile(codeResp),
+    onError:(error)=>console.log(err)
+  })
+
+  const GenerateTrip = async () => {
+
+    const user = localStorage.getItem('user')
+
+    if(!user){
+      setOpenDialog(true)
+      return;
+    }
+
     if(formData?.noOfDays>5){
       alert('Please enter number of days less than 5')
       return ;
@@ -28,8 +58,37 @@ function CreateTrip() {
       alert('Please enter number of days at least as 1')
       return ;
     }
-    console.log(formData);
+    // console.log(formData);
+    const FINAL_PROMPT = AI_PROMPT
+    .replace('{locality}', formData?.locality)
+    .replace('{mood}', formData?.mood)
+    .replace('{noOfDays}', formData?.noOfDays)
+    .replace('{budget}', formData?.budget)
+
+    console.log(FINAL_PROMPT)
+
+    const result = await chatSession.sendMessage(FINAL_PROMPT);
+
+    console.log(result?.response?.text())
+
+    navigate('/view-trip', { state: result?.response?.text() });
+    
   }
+
+  const getUserProfile = (tokenInfo) => {
+    axios.get(`https://www.googleapis.com/oauth2/v1/userinfo?access_token=${tokenInfo?.access_token}`, {
+      headers:{
+        Authorization:`Bearer ${tokenInfo?.access_token}`,
+        Accept: 'Application/json'
+      }
+    }).then((resp) => {
+      console.log(resp)
+      localStorage.setItem('user', JSON.stringify(resp.data))
+      setOpenDialog(false);
+      GenerateTrip();
+    })
+  }
+
 
   return (
     <div className='sm:px-10 md:px-32 lg:px-56 xl:px-160 px-5 mt-10 mb-20'>
@@ -83,8 +142,22 @@ function CreateTrip() {
       <div className='my-12 flex justify-start'>
         <Button className='p-6' onClick={GenerateTrip}>Generate Trip ✨</Button>
       </div>
+
+      <Dialog open={openDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogDescription>
+              <h3 className='font-bold mb-4'>WanderAI</h3>
+              <h2>Sign in with Google</h2>
+              <p className='mb-6'>Sign in to the app using Google Auth</p>
+              <Button className='w-full py-6' onClick={login}>Sign in with Google</Button>
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }
 
-export default CreateTrip
+export default CreateTrip;
